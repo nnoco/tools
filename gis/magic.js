@@ -14,7 +14,7 @@ script.src = 'https://rawgit.com/nnoco/tools/master/gis/magic.js';
 document.body.appendChild(script);
 */
 
-
+var ADJUST_DISTANCE = 10;
 
 // mapFrame
 var area = {
@@ -78,8 +78,8 @@ function adjustInputRow() {
 <tr id="adjustRow">
 	<td>보정 <input name="isAdjust" type="checkbox"></td>
 	<td>
-		<label for="adjustForMarket"><input type="radio" name="adjust" id="adjustForMarket" value="market"> 마켓</label> &nbsp;
-		<label for="adjustForSection"><input type="radio" name="adjust" id="adjustForSection" value="section"> 섹션</label>
+		<label for="adjustForMarket"><input type="radio" name="adjust" id="adjustForMarket" value="store"> 마켓</label> &nbsp;
+		<label for="adjustForSection"><input type="radio" name="adjust" id="adjustForSection" value="sector"> 섹터</label>
 		<input type="hidden" id="currentCopiedPolys">
 	</td>
 </tr>
@@ -194,6 +194,9 @@ function setPolyList(data) {
 	// getMarketPolyItem에서 추가함.
 	currentPolyItems = {};
 
+	var isAdjust = $('[name=isAdjust]').prop('checked');
+	var adjustType = $('[name=adjust]').val();
+
 	var isStoreAndSection = false;
 	for(var i = 0 ; i < data.store.length ; i++) {
 		var store = data.store[i];
@@ -223,15 +226,31 @@ function setPolyList(data) {
 	// polyListLi
 	items = [];
 
-	var text = '';
 	if(isStoreAndSection) {
 		items.push(getMarketPolyItem(market, market.realName));
 
+		var checkedCount = [0, 0];
 		for(var i = 0 ; i < sections.length ; i++) {
-			var section = sections[i];
+			var sector = sections[i];
 
-			items.push(getMarketPolyItem(section, section.sectionName));
+			items.push(getMarketPolyItem(sector, sector.sectionName));
+
+			if(isAdjust) {
+				var result = adjustPolys(market, sector, adjustType);
+				console.log('보정됨:', result[0]);
+				console.log('동일함:', result[1]);
+
+				checkedCount[0] += result[0];
+				checkedCount[1] += result[1];
+			}
 		}
+
+		console.log('스토어 마커 수:', market.poly.length,
+			'확인된 마커 수', checkedCount[0] + checkedCount[1]);
+		console.log('보정된 마커 수', checkedCount[0]);
+
+		
+
 	} else {
 		for(var i = 0 ; i < data.store ; i ++) {
 			var store = data.store[i];
@@ -239,6 +258,46 @@ function setPolyList(data) {
 			items.push(getMarketPolyItem(store, store.sectionName));
 		}
 	}
+}
+
+function adjustPolys(store, sector, adjustType) {
+	// 보정카운트, 동일 카운트
+	var count = [0, 0];
+	// 보정 전 값 남기기
+	for(var x = 0; x < sector.poly.length ; x++) {
+		if(sector.adjusted) continue;
+
+		for(var y = 0 ; y < store.poly.length ; y++) {
+			var diffX = store.poly[y].x - sector.poly[x].x;
+			var diffY = store.poly[y].y - sector.poly[x].y;
+			
+			var distance = Math.sqrt((diffX * diffX) + (diffY * diffY));
+
+			// 보정값은 조절
+			if(distance <= ADJUST_DISTANCE && distance != 0) {
+				if(adjustType == 'store') {
+					sector.poly[x].beforeX = sector.poly[x].x;
+					sector.poly[x].x = store.poly[y].x;
+					sector.poly[x].beforeY = sector.poly[x].y;
+					sector.poly[x].y = store.poly[y].y;
+					sector.adjusted = true;
+				} else {
+					store.poly[y].beforeX = store.poly[y].x;
+					store.poly[y].x = sector.poly[x].x;
+					store.poly[y].beforeY = store.poly[y].y;
+					store.poly[y].y = sector.poly[x].y;
+					store.adjusted = true;
+				}
+				count[0]++;
+				continue;
+			} else if (distance == 0) {
+				count[1]++;
+				continue;
+			}
+		}
+	}
+
+	return count;
 }
 
 function setShopList(jo){
