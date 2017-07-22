@@ -1,3 +1,21 @@
+/*
+var wait = document.createElement('div');
+wait.style = 'width:100%;height:100%;position:absolute;top:0;left:0;z-index:10000;background-color:black';
+document.body.appendChild(wait);
+
+var waitingMessage = document.createElement('h1');
+waitingMessage.innerText = '잠시만 기다려주세요!';
+waitingMessage.style = 'font-size:20pt;color:white;';
+wait.appendChild(waitingMessage);
+
+var script = document.createElement('script');
+script.type = 'text/javascript';
+script.src = 'https://rawgit.com/nnoco/tools/master/gis/magic.js';
+document.body.appendChild(script);
+*/
+
+
+
 // mapFrame
 var area = {
 	strokeColor : "#FF0000",
@@ -41,20 +59,112 @@ var area_edit = {
 	pointRadius : 10		
 };
 
+var currentPolyItems;
+
+var isCopyButtonClicked = false;
+
+var backgroundColors = [
+	'999999','666666','333333','3300ff','3333ff','3366ff',
+	'3399ff','33ccff','33ffff','66ffff','66ccff','6699ff',
+	'6666ff','6633ff','6600ff','ff00ff','ff33ff','ff66ff',
+	'ff99ff','ffccff','ff99ff','ff66ff','ff33ff','ff00ff',
+	'6600ff','6633ff','6666ff','6699ff','66ccff','66ffff',
+	'33ffff','33ccff','3399ff','3366ff','3333ff','3300ff',
+	'333333','666666'
+];
+
+function adjustInputRow() {
+/*
+<tr id="adjustRow">
+	<td>보정 <input name="isAdjust" type="checkbox"></td>
+	<td>
+		<label for="adjustForMarket"><input type="radio" name="adjust" id="adjustForMarket" value="market"> 마켓</label> &nbsp;
+		<label for="adjustForSection"><input type="radio" name="adjust" id="adjustForSection" value="section"> 섹션</label>
+		<input type="hidden" id="currentCopiedPolys">
+	</td>
+</tr>
+*/
+}
+
+function copyButton() {
+/*
+<br><button onclick="javascript:copyToClipboard(this)" data-clicked="0" data-idx="${idx}" style="width:80px;padding:8px;background-color:#cccccc;border:none;cursor:pointer;">복사</button><br><br>
+*/
+}
+
+function copyToClipboard(button) {
+	var idx = $(button).attr('data-idx');
+	var clicked = parseInt($(button).attr('data-clicked'));
+	$(button).attr('data-clicked', clicked + 1);
+	$('#currentCopiedPolys').val(currentPolyItems[idx].polys);
+	isCopyButtonClicked = true;
+	$(button).text('복사됨').css('background-color', backgroundColors[clicked % backgroundColors.length]);
+
+	document.execCommand('copy');
+}
+
+function getFunctionContents(f) {
+	var lines = f.toString().split('\n');
+	return lines.slice(2, lines.length - 2).join('\n');
+}
+
+function renderCopyButton(idx) {
+	var item = currentPolyItems[idx];
+	
+	var button = getFunctionContents(copyButton);
+	button = button.replace(/\$\{label\}/gi, item.label);
+	button = button.replace(/\$\{idx\}/gi, item.idx);
+
+	return button;
+}
+	
+function getMarketPolyItem(section, label) {
+	var item = {
+		section: section,
+		idx: section.idx,
+		label: label,
+		polys: 'var polys = ' + JSON.stringify(section.poly)
+	};
+
+	currentPolyItems[section.idx] = item;
+	return item;
+}
+
+function append($parent, f) {
+	$parent.append(getFunctionContents(f));
+}
+
 var polyTextArea;
 (function(){
 	var jquery = document.createElement('script')
 	jquery.src = "https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js";
 	document.body.appendChild(jquery);
 	jquery.onload = function() {
-		var td = $('#waiting').parent().parent().children().first();
-		td.children().first().detach();
-		polyTextArea = $('<textarea id="polys" rows="5" cols="200"></textarea>');
-		td.append(polyTextArea);
-
-		$(wait).fadeOut();
+		if(wait) {
+			$(wait).fadeOut();
+		}
+		
+		initAdjustMode();
+		initCopyEvent();
 	}
 })();
+
+function initAdjustMode() {
+	var adjusts = getFunctionContents(adjustInputRow);
+	$('#addrName').parent().parent().parent().children().last().before($(adjusts));
+}
+
+function initCopyEvent() {
+	document.addEventListener('copy', function(e) {
+		if(isCopyButtonClicked) {
+			e.preventDefault();
+			e.clipboardData.setData('text/plain', $('#currentCopiedPolys').val());
+			console.log('복사되었습니다.');
+			console.log($('#currentCopiedPolys').val());
+			isCopyButtonClicked = false;
+		}
+	});
+}
 
 //검색 쿼리
 function searchQuery(pars){
@@ -68,19 +178,22 @@ function searchQuery(pars){
 
 	$.post("getMarket.do", pars, function(data) {
 		eval('data = ' + data);
-		console.log(data);
 
 		tp.mapf = mapFrame.FreeMapObj;
 
 		tp.shopSetting(data);
+		setPolyList(data);
 		setShopList(tp.shopObj);
-		setPolyTextArea(data);
+		
 		processOff();
 	});
 }
 
 // textarea 채우기
-function setPolyTextArea(data) {
+function setPolyList(data) {
+	// getMarketPolyItem에서 추가함.
+	currentPolyItems = {};
+
 	var isStoreAndSection = false;
 	for(var i = 0 ; i < data.store.length ; i++) {
 		var store = data.store[i];
@@ -104,31 +217,28 @@ function setPolyTextArea(data) {
 			sections.push(store);
 		}
 
-		console.log(market, sections);
 	}
 
+	// #polyList에 추가
+	// polyListLi
+	items = [];
 
 	var text = '';
 	if(isStoreAndSection) {
-		// market
-		text = '// ' + market.realName + "\n";
-		text += 'var polys = ' + JSON.stringify(market.poly);
+		items.push(getMarketPolyItem(market, market.realName));
 
 		for(var i = 0 ; i < sections.length ; i++) {
 			var section = sections[i];
-			text += '\n\n// ' + section.sectionName + '\n'
-			text += JSON.stringify(section.poly);
+
+			items.push(getMarketPolyItem(section, section.sectionName));
 		}
 	} else {
 		for(var i = 0 ; i < data.store ; i ++) {
 			var store = data.store[i];
 
-			text += '// ' + store.name  + '\n';
-			text += 'var polys = ' + JSON.stringify(store.poly) + '\n\n';
+			items.push(getMarketPolyItem(store, store.sectionName));
 		}
 	}
-
-	polyTextArea.text(text);
 }
 
 function setShopList(jo){
@@ -147,7 +257,7 @@ function setShopList(jo){
   
   			cloneRowEM.innerHTML="<div><a href='javascript:shopMapAll_Sub(\""+s.x+"\",\""+s.y+"\",\""+s.idx+"\", "+i+");'>"
   			+s.name+" ("+(s.idx)+")"
-  			+"</a></div>";
+  			+"</a>" + renderCopyButton(s.idx) + "</div>";
   
   				//+"<div><input type='checkbox' name='zone' onclick='zoneSelect()' /></div>";
   
@@ -162,7 +272,7 @@ function setShopList(jo){
   
   			cloneRowEM.innerHTML="<div><a href='javascript:shopMoveMap(\""+s.x+"\",\""+s.y+"\",\""+s.idx+"\", "+i+");'>"
   			+s.name+" ("+(s.idx)+")"
-  			+"</a></div>";
+  			+"</a>" + renderCopyButton(s.idx) + "</div>";
   
   				//+"<div><input type='checkbox' name='zone' onclick='zoneSelect()' /></div>";
   
@@ -366,7 +476,6 @@ mapFrame.drawZone = function(){
 		var s=Obj[i];
 		point.push(new this.FreeMapPoint(s.x, s.y));
 	}
-	console.log(area);
 	var polygon = new this.FreeMapPolygon(point);
 	polygon.setDrawPoint(true);	//20141121_수정(화면 내 매장영역 표시 후 포인트로 인한 느려짐 현상 해결 위해 제거)
 	polygon.setDrawStyle(area);
