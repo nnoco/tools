@@ -52,7 +52,7 @@ var polyTextArea;
 		polyTextArea = $('<textarea id="polys" rows="5" cols="200"></textarea>');
 		td.append(polyTextArea);
 
-		$(wait).fade();
+		$(wait).fadeOut();
 	}
 })();
 
